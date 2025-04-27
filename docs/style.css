@@ -1,0 +1,103 @@
+html {
+    font-family: Arial, Helvetica, sans-serif;
+    display: inline-block;
+    text-align: center;
+}
+
+h1 {
+    font-size: 1.8rem;
+    color: white;
+}
+
+.topnav {
+    overflow: hidden;
+    background-color: #0A1128;
+}
+
+body {
+    margin: 0;
+}
+
+.content {
+    padding: 10px;
+}
+
+.card-grid {
+    max-width: 800px;
+    margin: 0 auto;
+    margin-bottom: 30px;
+    display: grid;
+    grid-gap: 2rem;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
+.card {
+    background-color: white;
+    box-shadow: 2px 2px 12px 1px rgba(140, 140, 140, .5);
+}
+
+button {
+    color: white;
+    padding: 14px 20px;
+    margin: 8px 0;
+    border: none;
+    cursor: pointer;
+    border-radius: 5px;
+}
+
+.onButton {
+    background-color: #1cb7bf;
+    width: 5rem;
+}
+
+.offButton {
+    background-color: #5f6c6d;
+    width: 5rem;
+}
+
+.connectButton {
+    background-color: #24af37;
+}
+
+.disconnectButton {
+    background-color: #d13a30;
+}
+
+.gray-label {
+    color: #bebebe;
+    font-size: 1rem;
+}
+
+.reading {
+    font-size: 1.8rem;
+}
+
+.slidecontainer {
+    padding: 0 10px;
+    display: flex;
+}
+  
+/* The slider itself */
+.slider {
+    width: 94%;
+    margin-bottom: 1.5rem;
+}
+
+.hidden {
+    display: none;
+}
+
+.footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background-color: #0A1128;
+    color: white;
+    text-align: center;
+    padding: 10px 0;
+}
+
+.footer a {
+    color: white;
+}
