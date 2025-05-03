@@ -1,11 +1,5 @@
 #include <Arduino.h>
 
-/*
-  Rui Santos & Sara Santos - Random Nerd Tutorials
-  Complete project details at https://RandomNerdTutorials.com/esp32-web-bluetooth/
-  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files.
-  The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-*/
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
@@ -25,8 +19,13 @@ Preferences stcPrefs;
 #define LEDC_BASE_FREQ     4000
 
 // LED PIN
-#define LED_PIN            8
+const int LED0_PIN   = 8;
+const int LED1_PIN   = 9;
+const int LED_COUNT  = 2;
 
+uint8_t brightness[LED_COUNT] = {128, 255};
+bool    ledOn[LED_COUNT] = {true, true};
+uint8_t oldBrightness[LED_COUNT] = {1, 1};
 
 BLEServer* pServer = NULL;
 BLECharacteristic* pSensorCharacteristic = NULL;     // Read-only
@@ -38,21 +37,12 @@ bool oldDeviceConnected = false;
 
 unsigned long lastNotify = 0;
 
-bool ledOn = true;
-uint8_t brightness = 0;    // how bright the LED is
-uint8_t oldBrightness = 0;    
-
-
 // See the following for generating UUIDs:
 // https://www.uuidgenerator.net/
 #define SERVICE_UUID                   "19b10000-e8f2-537e-4f6c-d104768a1214"
 #define SENSOR_CHARACTERISTIC_UUID     "19b10001-e8f2-537e-4f6c-d104768a1214"
 #define LED_CHARACTERISTIC_UUID        "19b10002-e8f2-537e-4f6c-d104768a1214"
 #define BRIGHTNESS_CHARACTERISTIC_UUID "19b10003-e8f2-537e-4f6c-d104768a1214"
-
-// #define SERVICE_UUID               "555b0000-b2f0-48ee-ab74-3ce1af15f506"
-// #define SENSOR_CHARACTERISTIC_UUID "555b0001-b2f0-48ee-ab74-3ce1af15f506"
-// #define LED_CHARACTERISTIC_UUID    "555b0002-b2f0-48ee-ab74-3ce1af15f506"
 
 class MyServerCallbacks: public BLEServerCallbacks {
   void onConnect(BLEServer* pServer) {
@@ -64,33 +54,56 @@ class MyServerCallbacks: public BLEServerCallbacks {
   }
 };
 
-class LedCharacteristicCallbacks : public BLECharacteristicCallbacks {
+class LedOnOffCharacteristicCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic* pCharacteristic) {
     String value = pCharacteristic->getValue();
-    if (value.length() > 0) {
-      Serial.print("Characteristic event, written: ");
-      Serial.println(static_cast<int>(value[0])); // Print the integer value
+    if (value.length() > 1) {
+      int channel = static_cast<int>(value[0]);
+      int receivedValue = static_cast<int>(value[1]);
 
-      int receivedValue = static_cast<int>(value[0]);
-      if (receivedValue == 1 || receivedValue == '1') {
-        ledOn = true;
+      if (channel < 0 || channel >= LED_COUNT) {
+        Serial.println("Invalid channel number. Ignoring the write request.");
+        return;
+      }
+
+      Serial.print("LedOnOffCharacteristicCallbacks - value=");
+      Serial.print(receivedValue); // Print the integer value
+      Serial.print(", channel=");
+      Serial.println(channel); // Print the integer value
+
+      if (receivedValue) {
+        ledOn[channel] = true;
       } else {
-        ledOn = false;
+        ledOn[channel] = false;
       }
     }
   }
 };
 
-class BrightnessCharacteristicCallbacks : public BLECharacteristicCallbacks {
+class LedBrightnessCharacteristicCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic* pCharacteristic) {
     String value = pCharacteristic->getValue();
-    if (value.length() > 0) {
-      Serial.print("Brightness Characteristic event, written: ");
-      Serial.println(static_cast<int>(value[0])); // Print the integer value
+    if (value.length() > 1) {
+      int channel = static_cast<int>(value[0]);
+      int receivedValue = static_cast<int>(value[1]);
+      
+      if (channel < 0 || channel >= LED_COUNT) {
+        Serial.println("Invalid channel number. Ignoring the write request.");
+        return;
+      }
 
-      int receivedValue = static_cast<int>(value[0]);
+      Serial.print("LedBrightnessCharacteristicCallbacks - value=");
+      Serial.print(receivedValue); // Print the integer value
+      Serial.print(", channel=");
+      Serial.println(channel); // Print the integer value
+
       if (receivedValue > 0 && receivedValue <= 255) {
-        brightness = receivedValue;
+        if (receivedValue == 0) {
+          ledOn[channel] = false;
+        } else {
+          ledOn[channel] = true;
+        }
+        brightness[channel] = receivedValue;
         lastNotify = millis();
       }
     }
@@ -116,7 +129,7 @@ void initPrefs() {
     // The .begin() method created the "STCPrefs" namespace and since this is our
     //  first-time run we will create
     //  our keys and store the initial "factory default" values.
-    stcPrefs.putUChar("curBright", 128);
+    stcPrefs.putBytes("curBright", brightness, LED_COUNT); // Store the initial brightness values
     stcPrefs.putBool("nvsInit", true);          // Create the "already initialized"
                                                 //  key and store a value.
 
@@ -133,7 +146,13 @@ void initPrefs() {
 void updatePrefs() {
     stcPrefs.end();                             // close the namespace in RO mode and...
     stcPrefs.begin("STCPrefs", RW_MODE);        //  reopen it in RW mode.
-    stcPrefs.putUChar("curBright", brightness);
+    stcPrefs.putBytes("curBright", brightness, LED_COUNT); // Store the brightness values
+    for(int i = 0; i < LED_COUNT; i++) {
+      Serial.print("updatePrefs - brightness[");
+      Serial.print(i);
+      Serial.print("]=");
+      Serial.println(brightness[i]);
+    }
     stcPrefs.end();                             // Close the namespace in RW mode and...
     stcPrefs.begin("STCPrefs", RO_MODE);        //  reopen it in RO mode
 }
@@ -153,8 +172,8 @@ void setup() {
   //pinMode(ledPin, OUTPUT);
 
   initPrefs();
-  brightness = stcPrefs.getUChar("curBright");
-  oldBrightness = brightness;
+  stcPrefs.getBytes("curBright", brightness, LED_COUNT);
+  stcPrefs.getBytes("curBright", oldBrightness, LED_COUNT);
 
   // Create the BLE Device
   BLEDevice::init("Saturn V LUT");
@@ -189,10 +208,10 @@ void setup() {
                     );
 
   // Register the callback for the ON button characteristic
-  pBrightnessCharacteristic->setCallbacks(new BrightnessCharacteristicCallbacks());
+  pBrightnessCharacteristic->setCallbacks(new LedBrightnessCharacteristicCallbacks());
 
   // Register the callback for the ON button characteristic
-  pLedCharacteristic->setCallbacks(new LedCharacteristicCallbacks());
+  pLedCharacteristic->setCallbacks(new LedOnOffCharacteristicCallbacks());
 
   // https://www.bluetooth.com/specifications/gatt/viewer?attributeXmlFile=org.bluetooth.descriptor.gatt.client_characteristic_configuration.xml
   // Create a BLE Descriptor
@@ -212,25 +231,35 @@ void setup() {
   Serial.println("Waiting a client connection to notify...");
   
   // Setup timer and attach timer to a led pin
-  ledcAttach(LED_PIN, LEDC_BASE_FREQ, LEDC_TIMER_12_BIT);
-
+  ledcAttach(LED0_PIN, LEDC_BASE_FREQ, LEDC_TIMER_12_BIT);
+  ledcAttach(LED1_PIN, LEDC_BASE_FREQ, LEDC_TIMER_12_BIT);
 }
 
 void loop() {
+  uint8_t buf[2];
+
   // notify changed value
   if (deviceConnected) {
     unsigned long msec = millis();
     if (msec - lastNotify > 1000) {
       lastNotify = msec;
-      pSensorCharacteristic->setValue(String(brightness));
-      pSensorCharacteristic->notify();
-      Serial.print("New value notified: ");
-      Serial.println(brightness);
 
-      if (oldBrightness != brightness) {
-        oldBrightness = brightness;
+      pSensorCharacteristic->setValue(brightness, LED_COUNT);
+      pSensorCharacteristic->notify();
+       
+      if (memcmp(oldBrightness, brightness, LED_COUNT) != 0) {
+        memcpy(oldBrightness, brightness, LED_COUNT);
+          
+        for (int i = 0; i < LED_COUNT; i++) {
+          Serial.print("value notified: ");
+          Serial.print(brightness[i]);
+          Serial.print(" channel=");
+          Serial.print(i);
+        }
         updatePrefs();
       }
+      Serial.println();
+
       //delay(100); // bluetooth stack will go into congestion, if too many packets are sent, in 6 hours test i was able to go as low as 3ms
     }
   }
@@ -250,14 +279,18 @@ void loop() {
     Serial.println("Device Connected");
   }
 
-  if (ledOn) {
-    // set the brightness on LEDC channel 0
-    ledcAnalogWrite(LED_PIN, brightness);
-  } else {
-    // set the brightness on LEDC channel 0
-    ledcAnalogWrite(LED_PIN, 0);
+  if (ledOn[0]) {    
+    ledcAnalogWrite(LED0_PIN, brightness[0]); // set the brightness on LEDC channel
+  } else {    
+    ledcAnalogWrite(LED0_PIN, 0); // set the brightness on LEDC channel to 0
   }
 
-  delay(30);
+  if (ledOn[1]) {    
+    ledcAnalogWrite(LED1_PIN, brightness[1]); // set the brightness on LEDC channel
+  } else {    
+    ledcAnalogWrite(LED1_PIN, 0); // set the brightness on LEDC channel to 0
+  }
+
+  delay(50);
 }
 

@@ -26,31 +26,40 @@
             <div class="card hidden">
                 <p>
                     <h2>Stored Brightness</h2>
-                    <p class="reading"><span id="valueContainer">NaN</span></p>
+                    <span id="valueContainer1" class="reading">NaN</span>
+                    <span id="valueContainer0" class="reading">NaN</span>
                     <p class="gray-label">Last reading: <span id="timestamp"></span></p>
                 </p>
             </div>
 
             <div class="card">
                 <p>
-                    <h2>Light</h2>
-                    <button id="onButton" class="onButton">ON</button>
-                    <button id="offButton" class="offButton">OFF</button>
+                    <h2>Top Light</h2>
+                    <button id="onButton1" class="onButton">ON</button>
+                    <button id="offButton1" class="offButton">OFF</button>
                     <p class="hidden gray-label">Last value sent: <span id="valueSent"></span></p>
                 </p>
-            </div>
-        </div>
-        <div class="card-grid">   
-            <div class="card">
-                <h2>Brightness</h2>
-                <p class="reading"><span id="brightnessContainer">0</span>%</p>
+                <span id="brightnessContainer1" class="reading">0</span>%
                 <div class="slidecontainer">
                     <span>0%</span>
-                    <input type="range" min="1" max="255" value="0" class="slider" id="brightnessRange">
+                    <input type="range" min="1" max="255" value="0" class="slider" id="brightnessRange1">
                     <span>100%</span>
                 </div>
             </div>
-
+            <div class="card">
+                <p>
+                    <h2>LUT Light</h2>
+                    <button id="onButton0" class="onButton">ON</button>
+                    <button id="offButton0" class="offButton">OFF</button>
+                    <p class="hidden gray-label">Last value sent: <span id="valueSent"></span></p>
+                </p>
+                <span id="brightnessContainer0" class="reading">0</span>%
+                <div class="slidecontainer">
+                    <span>0%</span>
+                    <input type="range" min="1" max="255" value="0" class="slider" id="brightnessRange0">
+                    <span>100%</span>
+                </div>
+            </div>
 
         </div>
     </div>
@@ -65,44 +74,63 @@
 </body>
 <script>
     // DOM Elements
-    const connectButton = document.getElementById('connectBleButton');
-    const disconnectButton = document.getElementById('disconnectBleButton');
-    const onButton = document.getElementById('onButton');
-    const offButton = document.getElementById('offButton');
-    const retrievedValue = document.getElementById('valueContainer');
-    const latestValueSent = document.getElementById('valueSent');
-    const bleStateContainer = document.getElementById('bleState');
-    const timestampContainer = document.getElementById('timestamp');
-    const brightnessValue = document.getElementById('brightnessContainer');
-    const brightnessSlider = document.getElementById('brightnessRange');
+    const elemOnButton = [];
+    const elemOffButton = [];
+    const elemLevelValue = [];
+    const elemLevelSlider = [];
+    const elemRetrievedValue = [];
+
+    const elemConnectButton = document.getElementById('connectBleButton');
+    const elemDisconnectButton = document.getElementById('disconnectBleButton');
+    const elemBleStateContainer = document.getElementById('bleState');
+
+    elemRetrievedValue[1] = document.getElementById('valueContainer1');
+    elemRetrievedValue[0] = document.getElementById('valueContainer0');
+    const elemLastValueSent = document.getElementById('valueSent');
+    const elemTimestampContainer = document.getElementById('timestamp');
+
+    elemOnButton[1] = document.getElementById('onButton1');
+    elemOffButton[1] = document.getElementById('offButton1');
+    elemLevelValue[1] = document.getElementById('brightnessContainer1');
+    elemLevelSlider[1] = document.getElementById('brightnessRange1');
+
+    elemOnButton[0] = document.getElementById('onButton0');
+    elemOffButton[0] = document.getElementById('offButton0');
+    elemLevelValue[0] = document.getElementById('brightnessContainer0');    
+    elemLevelSlider[0] = document.getElementById('brightnessRange0');
 
     //Define BLE Device Specs
     var deviceNamePrefix ='Saturn';
-    var bleService = '19b10000-e8f2-537e-4f6c-d104768a1214';
-    var ledCharacteristic = '19b10002-e8f2-537e-4f6c-d104768a1214';
-    var sensorCharacteristic= '19b10001-e8f2-537e-4f6c-d104768a1214';
-    var brightnessCharacteristic = '19b10003-e8f2-537e-4f6c-d104768a1214';
+    var bleServiceUUID = '19b10000-e8f2-537e-4f6c-d104768a1214';
+    var ledOnOffCharacteristicUUID = '19b10002-e8f2-537e-4f6c-d104768a1214';
+    var ledReportCharacteristicUUID= '19b10001-e8f2-537e-4f6c-d104768a1214';
+    var ledLevelCharacteristicUUID = '19b10003-e8f2-537e-4f6c-d104768a1214';
 
     //Global Variables to Handle Bluetooth
     var bleServer;
-    var bleServiceFound;
-    var sensorCharacteristicFound;
+    var bleService;
+    var reportCharacteristic;
+
+    var reportReceived = false;
 
     // Connect Button (search for BLE Devices only if BLE is available)
-    connectButton.addEventListener('click', (event) => {
+    elemConnectButton.addEventListener('click', (event) => {
         if (isWebBluetoothEnabled()){
             connectToDevice();
+            reportReceived = false;
         }
     });
 
     // Disconnect Button
-    disconnectButton.addEventListener('click', disconnectDevice);
+    elemDisconnectButton.addEventListener('click', disconnectDevice);
 
-    // Write to the ESP32 LED Characteristic
-    onButton.addEventListener('click', () => writeOnCharacteristic(1));
-    offButton.addEventListener('click', () => writeOnCharacteristic(0));
+    for (let channel = 0; channel < 2; channel++) {
+        elemOnButton[channel].addEventListener('click', () => writeOnOffCharacteristic(channel, 1));
+        elemOffButton[channel].addEventListener('click', () => writeOnOffCharacteristic(channel, 0));
+        elemLevelSlider[channel].oninput = () => levelSliderInputHandler(channel);
+    }
 
-        // A throttle function that takes a function and an interval as parameters
+    // A throttle function that takes a function and an interval as parameters
     function throttle(func, interval) {
         // A flag variable to track whether the function is running or not
         let isRunning = false;
@@ -124,26 +152,26 @@
         };
     }
 
-    const throttledUpdatebrightnessCharacteristic = throttle(() => {
-        brightnessValue.innerHTML = Math.round(1000 * brightnessSlider.value / 255)/10;
-        bleServiceFound.getCharacteristic(brightnessCharacteristic)
+    const throttledUpdatebrightnessCharacteristic = throttle((channel) => {
+        elemLevelValue[channel].innerHTML = Math.round(100 * elemLevelSlider[channel].value / 255)/1;
+        bleService.getCharacteristic(ledLevelCharacteristicUUID)
         .then(characteristic => {
             console.log("Found the Brightness characteristic: ", characteristic.uuid);
-            const data = new Uint8Array([brightnessSlider.value]);
+            const data = new Uint8Array([channel, elemLevelSlider[channel].value]);
             return characteristic.writeValue(data);
         })
         .then(() => {
-            latestValueSent.innerHTML =  brightnessSlider.value;
-            console.log("Value written to Brightness characteristic:",  brightnessSlider.value);
+            elemLastValueSent.innerHTML =  elemLevelSlider[channel].value;
+            console.log("Value written to Brightness characteristic:",  elemLevelSlider[channel].value);
         })
         .catch(error => {
             console.error("Error writing to the Brightness characteristic: ", error);
         });
     }, 150);
 
-    brightnessSlider.oninput = function() {
+    function levelSliderInputHandler(channel) {
         if (bleServer && bleServer.connected) {
-            throttledUpdatebrightnessCharacteristic();
+            throttledUpdatebrightnessCharacteristic(channel);
         } else {
             console.error ("Bluetooth is not connected. Cannot write to characteristic.")
             window.alert("Bluetooth is not connected. Cannot write to characteristic. \n Connect to BLE first!")
@@ -154,7 +182,7 @@
     function isWebBluetoothEnabled() {
         if (!navigator.bluetooth) {
             console.log('Web Bluetooth API is not available in this browser!');
-            bleStateContainer.innerHTML = "Web Bluetooth API is not available in this browser/device!";
+            elemBleStateContainer.innerHTML = "Web Bluetooth API is not available in this browser/device!";
             return false
         }
         console.log('Web Bluetooth API supported in this browser.');
@@ -166,41 +194,45 @@
         console.log('Initializing Bluetooth...');
         navigator.bluetooth.requestDevice({
             filters: [{namePrefix: deviceNamePrefix}],
-            optionalServices: [bleService]
+            optionalServices: [bleServiceUUID]
         })
         .then(device => {
             console.log('Device Selected:', device.name);
-            bleStateContainer.innerHTML = `Connected to device: '${device.name}'`;
-            bleStateContainer.style.color = "#24af37";
+            elemBleStateContainer.innerHTML = `Connected to device: '${device.name}'`;
+            elemBleStateContainer.style.color = "#24af37";
             device.addEventListener('gattservicedisconnected', onDisconnected);
             return device.gatt.connect();
         })
         .then(gattServer =>{
             bleServer = gattServer;
             console.log("Connected to GATT Server");
-            return bleServer.getPrimaryService(bleService);
+            return bleServer.getPrimaryService(bleServiceUUID);
         })
         .then(service => {
-            bleServiceFound = service;
+            bleService = service;
             console.log("Service discovered:", service.uuid);
-            return service.getCharacteristic(sensorCharacteristic);
+            return service.getCharacteristic(ledReportCharacteristicUUID);
         })
         .then(characteristic => {
             console.log("Characteristic discovered:", characteristic.uuid);
-            sensorCharacteristicFound = characteristic;
-            characteristic.addEventListener('characteristicvaluechanged', handleCharacteristicChange);
+            reportCharacteristic = characteristic;
+            characteristic.addEventListener('characteristicvaluechanged', handleReportReceived);
             characteristic.startNotifications();
             console.log("Notifications Started.");
-            return characteristic.readValue();
-        })
-        .then(value => {
-            console.log("Read value: ", value);
-            const decodedValue = new TextDecoder().decode(value);
-            console.log("Decoded value: ", decodedValue);
-            retrievedValue.innerHTML = decodedValue;            
-            //brightness.value = decodedValue;   
-            brightnessSlider.value = decodedValue;      
-            brightnessValue.innerHTML = Math.round(1000 * brightnessSlider.value / 255)/10;   
+        //    return characteristic.readValue();
+        // })
+        // .then(value => {
+        //      console.log("Read value: ", value);
+        //      var buf = event.target.value;
+        //      if (buf.byteLength == 2) {
+        //         const channel = CHANNEL;
+        //          const value = buf.getUint8(CHANNEL);
+        //          console.log(`Decoded value: ${value} channel: ${channel}`);
+        //          elemRetrievedValue.innerHTML = value;            
+        //          //brightness.value = decodedValue;   
+        //          elemLevelSlider[channel].value = value;      
+        //          elemLevelValue[channel].innerHTML = Math.round(1000 * elemLevelSlider[channel].value / 255)/10;   
+        //      }
         })
         .catch(error => {
             console.log('Error: ', error);
@@ -209,33 +241,42 @@
 
     function onDisconnected(event){
         console.log('Device Disconnected:', event.target.device.name);
-        bleStateContainer.innerHTML = "Device disconnected";
-        bleStateContainer.style.color = "#d13a30";
+        elemBleStateContainer.innerHTML = "Device disconnected";
+        elemBleStateContainer.style.color = "#d13a30";
 
         connectToDevice();
     }
 
-    function handleCharacteristicChange(event){
-        const newValueReceived = new TextDecoder().decode(event.target.value);
-        console.log("Characteristic value changed: ", newValueReceived);
-        retrievedValue.innerHTML = newValueReceived;
-        if (brightnessValue.innerHTML == 'NaN') {
-            brightnessValue.innerHTML = Math.round(1000 * newValueReceived / 255)/10;
-            brightnessSlider.value = newValueReceived;
+    function handleReportReceived(event){
+        if (reportReceived) {
+            return;
         }
-        timestampContainer.innerHTML = getDateTime();
+        var buf = event?.target?.value;
+        if (buf?.byteLength == 2) {
+            for(let channel = 0; channel < 2; channel++){
+                const value = buf.getUint8(channel);
+                console.log(`reported value: ${value} channel: ${channel}`);
+
+                elemLevelValue[channel].innerHTML = Math.round(100 * value / 255)/1;
+                elemLevelSlider[channel].value = value;
+                
+                elemRetrievedValue[channel].innerHTML = String(value);
+                elemTimestampContainer.innerHTML = getDateTime();
+                reportReceived = true;
+            }
+        }
     }
 
-    function writeOnCharacteristic(value){
+    function writeOnOffCharacteristic(channel, value){
         if (bleServer && bleServer.connected) {
-            bleServiceFound.getCharacteristic(ledCharacteristic)
+            bleService.getCharacteristic(ledOnOffCharacteristicUUID)
             .then(characteristic => {
                 console.log("Found the LED characteristic: ", characteristic.uuid);
-                const data = new Uint8Array([value]);
+                const data = new Uint8Array([channel, value]);
                 return characteristic.writeValue(data);
             })
             .then(() => {
-                latestValueSent.innerHTML = value;
+                elemLastValueSent.innerHTML = value;
                 console.log("Value written to LEDcharacteristic:", value);
             })
             .catch(error => {
@@ -250,16 +291,16 @@
     function disconnectDevice() {
         console.log("Disconnect Device.");
         if (bleServer && bleServer.connected) {
-            if (sensorCharacteristicFound) {
-                sensorCharacteristicFound.stopNotifications()
+            if (reportCharacteristic) {
+                reportCharacteristic.stopNotifications()
                     .then(() => {
                         console.log("Notifications Stopped");
                         return bleServer.disconnect();
                     })
                     .then(() => {
                         console.log("Device Disconnected");
-                        bleStateContainer.innerHTML = "Device Disconnected";
-                        bleStateContainer.style.color = "#d13a30";
+                        elemBleStateContainer.innerHTML = "Device Disconnected";
+                        elemBleStateContainer.style.color = "#d13a30";
 
                     })
                     .catch(error => {

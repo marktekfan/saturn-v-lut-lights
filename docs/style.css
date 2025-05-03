@@ -70,6 +70,7 @@ button {
 
 .reading {
     font-size: 1.8rem;
+    padding: 10px;
 }
 
 .slidecontainer {
@@ -95,7 +96,8 @@ button {
     background-color: #0A1128;
     color: white;
     text-align: center;
-    padding: 10px 0;
+    /* padding: 10px 0; */
+    padding: 0;
 }
 
 .footer a {
